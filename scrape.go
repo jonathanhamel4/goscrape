@@ -11,6 +11,15 @@ import (
 
 type movie struct {
 	Title string `selector:".title_wrapper h1"`
+	Country string `selector:"#titleDetails > .txt-block:first-of-type a"`
+	Language string `selector:"#titleDetails > .txt-block:nth-of-type(2) a"`
+	Rating string `selector:"span[itemprop='ratingValue']"`
+	RatingCount string `selector:"span[itemprop='ratingCount']"`
+	Summary string `selector:"div.summary_text"`
+	StoryLine string `selector:"#titleStoryLine div > p > span"`
+	Runtime string `selector:"#titleDetails > .txt-block:nth-of-type(8) > time"`
+	Genres []string `selector:".title_wrapper a[href]:not([title])"`
+	ImdbUrl string
 }
 
 func verifyErr(err error) {
@@ -22,6 +31,7 @@ func verifyErr(err error) {
 func main() {
 
 	articles := make([]*movie, 0)
+	genres := make([]string, 0)
 
 	c := colly.NewCollector(
 		colly.AllowedDomains("www.imdb.com"),
@@ -31,8 +41,12 @@ func main() {
 
 	// collect the data
 	articleCollector.OnHTML("body", func(e *colly.HTMLElement) {
-		movieIndex := &movie{ }
+		movieIndex := &movie{
+			ImdbUrl: e.Request.URL.String(),
+		}
 		e.Unmarshal(movieIndex)
+		movieIndex.ImdbUrl = e.Request.URL.String()
+
 		articles = append(articles, movieIndex)
 	})
 
@@ -48,6 +62,7 @@ func main() {
 
 		if len(queryString["genres"]) > 0 {
 			fmt.Println("Discovered genre: ", queryString["genres"][0])
+			genres = append(genres, queryString["genres"][0])
 			c.Visit(e.Request.AbsoluteURL(link))
 		}
 	})
@@ -58,17 +73,18 @@ func main() {
 		title, err := e.DOM.Html()
 		verifyErr(err)
 
-		if title != "" && strings.Contains(link, "title/tt") {
+		if title != "" && strings.Contains(link, "title/tt") && len(articles) == 0 {
 			fmt.Println("Discovered title: ", title)
 			articleCollector.Visit(e.Request.AbsoluteURL(link))
 		}
 	})
 
-	c.Visit("https://www.imdb.com/search/title/?genres=comedy&explore=title_type,genres&pf_rd_m=A2FGELUUNOQJNL&pf_rd_p=3396781f-d87f-4fac-8694-c56ce6f490fe&pf_rd_r=D2GKRDFXVJGEER11W3FT&pf_rd_s=center-1&pf_rd_t=15051&pf_rd_i=genre&ref_=ft_gnr_pr1_i_1")
+	c.Visit("https://www.imdb.com/feature/genre/")
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 
 	// Dump json to the standard output
 	enc.Encode(articles)
+	enc.Encode(genres)
 }
