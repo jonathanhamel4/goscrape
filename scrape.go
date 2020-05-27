@@ -6,32 +6,16 @@ import (
 	"net/url"
 	"strings"
 	"encoding/json"
+	"github.com/joho/godotenv"
 	"github.com/gocolly/colly/v2"
+
+	"github.com/jonathanhamel4/goscrape/db"
+	"github.com/jonathanhamel4/goscrape/types"
 )
 
-type movie struct {
-	Title string `selector:".title_wrapper h1"`
-	Country string `selector:"#titleDetails > .txt-block:first-of-type a"`
-	Language string `selector:"#titleDetails > .txt-block:nth-of-type(2) a"`
-	Rating string `selector:"span[itemprop='ratingValue']"`
-	RatingCount string `selector:"span[itemprop='ratingCount']"`
-	Summary string `selector:"div.summary_text"`
-	StoryLine string `selector:"#titleStoryLine div > p > span"`
-	Runtime string `selector:"#titleDetails > .txt-block:nth-of-type(8) > time"`
-	Genres []string `selector:".title_wrapper a[href]:not([title])"`
-	ImdbUrl string
-}
-
-func verifyErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func main() {
-
-	articles := make([]*movie, 0)
-	genres := make([]string, 0)
+func scrape() {
+	articles := make([]*types.Movie, 0)
+	genres := make([]types.Genre, 0)
 
 	c := colly.NewCollector(
 		colly.AllowedDomains("www.imdb.com"),
@@ -41,7 +25,7 @@ func main() {
 
 	// collect the data
 	articleCollector.OnHTML("body", func(e *colly.HTMLElement) {
-		movieIndex := &movie{
+		movieIndex := &types.Movie{
 			ImdbUrl: e.Request.URL.String(),
 		}
 		e.Unmarshal(movieIndex)
@@ -55,14 +39,14 @@ func main() {
 		link := e.Attr("href")
 
 		resource, err := url.Parse(link)
-		verifyErr(err)
+		VerifyError(err)
 
 		queryString, err := url.ParseQuery(resource.RawQuery)
-		verifyErr(err)
+		VerifyError(err)
 
 		if len(queryString["genres"]) > 0 {
 			fmt.Println("Discovered genre: ", queryString["genres"][0])
-			genres = append(genres, queryString["genres"][0])
+			genres = append(genres, types.Genre(queryString["genres"][0]))
 			c.Visit(e.Request.AbsoluteURL(link))
 		}
 	})
@@ -71,7 +55,7 @@ func main() {
 	c.OnHTML("h3.lister-item-header a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		title, err := e.DOM.Html()
-		verifyErr(err)
+		VerifyError(err)
 
 		if title != "" && strings.Contains(link, "title/tt") && len(articles) == 0 {
 			fmt.Println("Discovered title: ", title)
@@ -87,4 +71,20 @@ func main() {
 	// Dump json to the standard output
 	enc.Encode(articles)
 	enc.Encode(genres)
+
+	db_provider.InsertMovies(articles)
+}
+
+
+func main() {
+	defer scrape()
+
+	err := godotenv.Load()
+	if err != nil {
+	  panic("Error loading .env file")
+	}
+	
+	mongoConn := os.Getenv("MONGO_CONNECTION_STRING")
+
+	db_provider.ConnectDB(mongoConn)
 }

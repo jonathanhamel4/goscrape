@@ -3,3 +3,5 @@ services:
   mongo:
     image: mongo
     command: --serviceExecutor adaptive
+    ports:
+        - "27017:27017"
